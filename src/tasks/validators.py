@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from tasks.models import TaskStatus
+from tasks.models.tasks import TaskStatus
 
 
 def is_status_available(current: TaskStatus, new: TaskStatus) -> bool:

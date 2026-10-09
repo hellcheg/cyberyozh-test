@@ -3,7 +3,7 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from tasks.models import Task, TaskStatus
+from tasks.models.tasks import Task, TaskStatus
 
 User = get_user_model()
 

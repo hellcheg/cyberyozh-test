@@ -51,24 +51,3 @@ class Task(models.Model):
 
     class Meta:
         db_table = "tasks"
-
-
-class Comment(models.Model):
-    comment_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    title = models.CharField(max_length=255)
-    description = models.TextField()
-    author = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        related_name="comments",
-    )
-    task = models.ForeignKey(
-        Task,
-        on_delete=models.CASCADE,
-        related_name="comments",
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        db_table = "comments"

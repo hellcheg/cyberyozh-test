@@ -25,6 +25,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: runtime
     container_name: api
     restart: always    
     volumes:
@@ -36,6 +37,23 @@ services:
       - PYTHONUNBUFFERED=1
     ports:
       - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  tests:
+    profiles:
+      - tests
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: test-runtime
+    env_file:
+      - .env    
+    volumes:
+      - ./pyproject.toml:/app/pyproject.toml
+    environment:
+      - PYTHONUNBUFFERED=1
     depends_on:
       db:
         condition: service_healthy

@@ -1,5 +1,9 @@
 run:
 	docker compose up -d
 
-integration-test:
-	docker compose run --rm web python manage.py test
+integration-tests:
+	docker compose --profile test run --build --rm tests coverage run manage.py test --verbosity=2
+
+
+unit-tests:
+	docker compose --profile test run --build --rm tests pytest . -v --cov=.  --cov-report=term-missing
