@@ -1,0 +1,18 @@
+# Исключаем систему контроля версий и окружения
+.git
+.gitignore
+.venv
+venv
+__pycache__
+*.pyc
+
+# Исключаем файлы конфигурации и документацию
+.env
+README.md
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Логи и тесты
+*.log
+.pytest_cache/
