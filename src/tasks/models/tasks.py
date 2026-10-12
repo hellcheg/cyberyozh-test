@@ -1,9 +1,8 @@
 import uuid
 
-from django.contrib.auth import get_user_model
 from django.db import models
 
-User = get_user_model()
+from test_task import settings
 
 
 # Create your models here.
@@ -40,7 +39,7 @@ class Task(models.Model):
         default=TaskStatus.NEW,
     )
     assignee = models.ForeignKey(
-        User,
+        settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

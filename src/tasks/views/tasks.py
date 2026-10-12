@@ -1,37 +1,59 @@
 from functools import partial
 from typing import Callable
+from uuid import UUID
 
-from rest_framework import generics, permissions
+from drf_spectacular.utils import extend_schema
+from rest_framework import permissions, status
 from rest_framework.exceptions import NotFound as DRFNotFound
 from rest_framework.exceptions import ValidationError as DRFValidationError
+from rest_framework.request import Request
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
-from tasks.models.tasks import Task, TaskStatus
-from tasks.serializers.tasks import TaskSerializer
-from tasks.services.tasks import assign_user, create_task, delete_task, update_status
-from test_task.errors import NotFoundError, ValidationError
+from tasks.dependencies import container
+from tasks.entities.value_objects import TaskStatus
+from tasks.serializers.tasks import PatchTaskSerializer, TaskSerializer
+from tasks.services.tasks import TaskEntity, TaskService
+from test_task.errors import AppError, NotFoundError, ValidationError
 
 
-class TaskList(generics.ListCreateAPIView):
-    queryset = Task.objects.all()
+class TaskList(APIView):
     serializer_class = TaskSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    def perform_create(self, serializer: TaskSerializer):
-        validated_data = serializer.validated_data
-        task = create_task(
-            title=validated_data["title"],
-            description=validated_data["description"],
-            assignee=validated_data.get("assignee", None),
-        )
-        serializer.instance = task
+    def get(self, request: Request) -> Response:
+        with container() as request_container:
+            service = request_container.get(TaskService)
+            tasks = service.get_all()
+        serializer = TaskSerializer(tasks, many=True)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request: Request) -> Response:
+        serializer = TaskSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            with container() as request_container:
+                service = request_container.get(TaskService)
+                validated_data = serializer.validated_data
+                task = service.create(
+                    title=validated_data["title"],
+                    description=validated_data["description"],
+                    assignee=validated_data.get("assignee", None),
+                )
+        except AppError as err:
+            return Response({"error": str(err)}, status=status.HTTP_400_BAD_REQUEST)
+
+        response_serializer = TaskSerializer(task)
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
 
-class TaskDetail(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Task.objects.all()
+class TaskDetail(APIView):
     serializer_class = TaskSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    def _update(self, func: Callable[..., Task], field: str) -> Task:
+    def _update(self, func: Callable[..., TaskEntity], field: str) -> TaskEntity:
         try:
             return func()
         except NotFoundError as ex:
@@ -39,25 +61,47 @@ class TaskDetail(generics.RetrieveUpdateDestroyAPIView):
         except ValidationError as ex:
             raise DRFValidationError({field: str(ex)})
 
-    def perform_update(self, serializer: TaskSerializer):
-        validated_data = serializer.validated_data
-        task_id = self.kwargs.get("pk", None)
-        if assignee := validated_data.get("assignee", None):
-            serializer.instance = self._update(
-                partial(assign_user, task_id=task_id, user_id=assignee.id),
-                field="assignee",
-            )
-            return
-        if status := validated_data.get("status", None):
-            serializer.instance = self._update(
-                partial(update_status, task_id=task_id, status=TaskStatus(status)),
-                field="status",
-            )
-            return
+    def get(self, request, pk: UUID) -> Response:
+        with container() as request_container:
+            service = request_container.get(TaskService)
+            tasks = service.get_by_id(pk)
+        serializer = TaskSerializer(tasks)
 
-    def perform_destroy(self, serializer: TaskSerializer):
-        task_id = self.kwargs.get("pk", None)
-        try:
-            delete_task(task_id=task_id)
-        except NotFoundError as ex:
-            raise DRFNotFound(ex)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @extend_schema(request=PatchTaskSerializer)
+    def patch(self, request, pk: UUID) -> Response:
+        serializer = PatchTaskSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        validated_data = serializer.validated_data
+        with container() as request_container:
+            service = request_container.get(TaskService)
+            if assignee := validated_data.get("assignee", None):
+                updated_task = self._update(
+                    partial(service.assign_user, task_id=pk, user_id=assignee),
+                    field="assignee",
+                )
+            if task_status := validated_data.get("status", None):
+                updated_task = self._update(
+                    partial(
+                        service.update_status,
+                        task_id=pk,
+                        status=TaskStatus(task_status),
+                    ),
+                    field="status",
+                )
+
+        response_serializer = TaskSerializer(updated_task)
+        return Response(response_serializer.data, status=status.HTTP_200_OK)
+
+    def delete(self, request, pk: UUID) -> Response:
+        with container() as request_container:
+            service = request_container.get(TaskService)
+            try:
+                service.delete_task(task_id=pk)
+            except NotFoundError as err:
+                return Response({"detail": str(err)}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response(status=status.HTTP_204_NO_CONTENT)

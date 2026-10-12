@@ -1,7 +1,13 @@
-from pytest_factoryboy import register
+import pytest
 
 # Укажите правильный импорт ваших фабрик
-from tasks.tests.units.factories import TaskFactory, UserFactory
+from tasks.entities.task import Task
 
-register(TaskFactory)
-register(UserFactory)
+
+@pytest.fixture
+def task() -> Task:
+    return Task.create(
+        title="Test title",
+        description="Test description",
+        status="NEW",
+    )

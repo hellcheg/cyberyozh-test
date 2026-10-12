@@ -1,11 +1,9 @@
 import uuid
 
-from django.contrib.auth import get_user_model
 from django.db import models
 
 from tasks.models.tasks import Task
-
-User = get_user_model()
+from test_task import settings
 
 
 class Comment(models.Model):
@@ -13,7 +11,7 @@ class Comment(models.Model):
     title = models.CharField(max_length=255)
     description = models.TextField()
     author = models.ForeignKey(
-        User,
+        settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="comments",
     )

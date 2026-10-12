@@ -6,11 +6,10 @@ from rest_framework.test import APITestCase
 from tasks.models.comments import Comment
 from tasks.models.tasks import Task, TaskStatus
 
-User = get_user_model()
-
 
 class _CommentAPITests(APITestCase):
     def setUp(self):
+        User = get_user_model()
         self.user = User.objects.create_user(
             username="developer", password="password123"
         )

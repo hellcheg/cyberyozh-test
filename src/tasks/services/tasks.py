@@ -1,75 +1,71 @@
 import logging
 from uuid import UUID
 
-from django.contrib.auth.models import AbstractUser
-from django.db import transaction
-
-from tasks.models.tasks import Task, TaskStatus
-from tasks.services.common import get_task, get_task_for_update, get_user
-from tasks.validators import can_assign_user, is_status_available
-from test_task.errors import ValidationError
+from tasks.entities.task import Task as TaskEntity
+from tasks.entities.task import TaskStatus as TaskStatusEntity
+from tasks.repositories.task_repository import TaskRepository
+from tasks.services.errors_handler import log_domain_errors
+from tasks.services.transaction import TransactionalContext
+from test_task.errors import NotFoundError
+from users.repositories import UserRepository
 
 logger = logging.getLogger("django")
 
 
-def create_task(title: str, description: str, assignee: int | None = None) -> Task:
-    user: AbstractUser | None = None
-    if assignee:
-        user = get_user(assignee)
+class TaskService:
+    def __init__(
+        self,
+        task_repo: TaskRepository,
+        user_repo: UserRepository,
+        transactional: TransactionalContext,
+    ) -> None:
+        self._task_repo = task_repo
+        self._user_repo = user_repo
+        self._transactional = transactional
 
-    new_task = Task(
-        title=title,
-        description=description,
-        assignee=user,
-        status=TaskStatus.NEW,
-    )
-    new_task.save()
-    return new_task
+    @log_domain_errors
+    def get_all(self) -> list[TaskEntity]:
+        return self._task_repo.get_all()
 
+    @log_domain_errors
+    def get_by_id(self, task_id: UUID) -> TaskEntity:
+        return self._task_repo.get_by_id(task_id)
 
-@transaction.atomic
-def assign_user(task_id: UUID, user_id: int | None = None) -> Task:
-    task = get_task_for_update(task_id)
-    if user_id is None:
-        task.assignee = None
-        task.save()
-        return task
-
-    new_user = get_user(user_id)
-
-    if not can_assign_user(task.assignee_id, new_user.id, TaskStatus(task.status)):
-        logger.warning(
-            f"Validation failed: Can't assign user {user_id} to task {task_id}. Current status: {task.status}"
+    @log_domain_errors
+    def create(
+        self, title: str, description: str, assignee: int | None = None
+    ) -> TaskEntity:
+        if assignee and not self._user_repo.exists(assignee):
+            raise NotFoundError(f"User ({assignee}) does not exist")
+        task = TaskEntity.create(
+            title=title, description=description, status=TaskStatusEntity.NEW.value
         )
-        raise ValidationError(f"Can't change assignee in status123123 {task.status}")
+        return self._task_repo.create(task)
 
-    task.assignee = new_user
-    task.save()
-    logger.info(f"Task {task_id} successfully reassigned to user {user_id}")
-    return task
+    @log_domain_errors
+    def assign_user(self, task_id: UUID, user_id: int | None = None) -> TaskEntity:
+        with self._transactional():
+            task = self._task_repo.get_by_id_for_update(task_id=task_id)
+            if user_id and not self._user_repo.exists(user_id):
+                raise NotFoundError(f"User ({user_id}) does not exist")
+            task.assign_user(user_id)
+            self._task_repo.update(task)
+        logger.info(f"Task {task_id} successfully reassigned to user {user_id}")
+        return self._task_repo.get_by_id(task_id=task_id)
 
-
-@transaction.atomic
-def update_status(task_id: UUID, status: TaskStatus) -> Task:
-    task = get_task_for_update(task_id)
-
-    if not is_status_available(TaskStatus(task.status), status):
-        logger.warning(
-            f"Validation failed: Forbidden status transition for task {task_id} from {task.status} to {status.value}"
+    @log_domain_errors
+    def update_status(self, task_id: UUID, status: TaskStatusEntity) -> TaskEntity:
+        with self._transactional():
+            task = self._task_repo.get_by_id_for_update(task_id=task_id)
+            old_status = task.status
+            task.change_status(status)
+            self._task_repo.update(task)
+        logger.info(
+            f"Task {task_id} status updated from {old_status} to {status.value}"
         )
-        raise ValidationError(
-            f"Can't change status from {task.status} to {status.value}"
-        )
-    old_status = task.status
-    task.status = status.value
-    task.save()
-    logger.info(f"Task {task_id} status updated from {old_status} to {status.value}")
-    return task
+        return self._task_repo.get_by_id(task_id=task_id)
 
-
-@transaction.atomic
-def delete_task(task_id: UUID) -> None:
-    task = get_task(task_id)
-    task.delete()
-    logger.info(f"Task {task_id} was permanently deleted")
-    return
+    def delete_task(self, task_id: UUID) -> None:
+        self._task_repo.delete_task(task_id)
+        logger.info(f"Task {task_id} was permanently deleted")
+        return

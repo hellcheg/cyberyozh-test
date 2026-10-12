@@ -5,11 +5,10 @@ from rest_framework.test import APITestCase
 
 from tasks.models.tasks import Task, TaskStatus
 
-User = get_user_model()
-
 
 class _TaskAPITests(APITestCase):
     def setUp(self):
+        User = get_user_model()
         self.user = User.objects.create_user(
             username="developer", password="password123"
         )
@@ -109,14 +108,14 @@ class TaskAPITestsNegative(_TaskAPITests):
 
     def test_cant_assign_closed_task_to_another_user(self):
         """Тест назначения задачи другому пользователю"""
-        data = {"status": TaskStatus.CANCELLED}
-        response = self.client.patch(self.detail_url, data, format="json")
+        task_status = {"status": TaskStatus.CANCELLED}
+        response = self.client.patch(self.detail_url, task_status, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.new_task.refresh_from_db()
         self.assertEqual(self.new_task.status, TaskStatus.CANCELLED)
-        data = {"assignee": self.manager.id}
-        response = self.client.patch(self.detail_url, data, format="json")
+        user = {"assignee": self.manager.id}
+        response = self.client.patch(self.detail_url, user, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.new_task.refresh_from_db()

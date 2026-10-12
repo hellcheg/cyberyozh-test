@@ -6,8 +6,6 @@ from django.contrib.auth.models import AbstractUser
 from tasks.models.tasks import Task
 from test_task.errors import NotFoundError
 
-User = get_user_model()
-
 
 def get_task(task_id: UUID) -> Task:
     try:
@@ -25,6 +23,7 @@ def get_task_for_update(task_id: UUID) -> Task:
 
 
 def get_user(user_id: int) -> AbstractUser:
+    User = get_user_model()
     try:
         new_user = User.objects.get(pk=user_id)
     except User.DoesNotExist:
