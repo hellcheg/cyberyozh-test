@@ -1,5 +1,5 @@
 run:
-	docker compose up -d
+	docker compose up -d --build
 
 integration-tests:
 	docker compose --profile test run --build --rm tests coverage run manage.py test --verbosity=2
