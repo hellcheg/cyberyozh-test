@@ -154,3 +154,8 @@ MAILERS = {
 
 
 AUTH_USER_MODEL = "users.CustomUser"
+SPECTACULAR_SETTINGS = {
+    "PREPROCESSING_HOOKS": [
+        "drf_spectacular.hooks.preprocess_exclude_path_format",
+    ],
+}
